@@ -1,7 +1,9 @@
 from langchain.chat_models import init_chat_model
-from langchain.messages import HumanMessage
+from langchain.agents import create_agent
+from langchain.messages import HumanMessage, AIMessage
 from langchain.tools import tool
 from dotenv import load_dotenv
+from pprint import pprint
 
 load_dotenv()
 
@@ -23,18 +25,28 @@ def calculate_bmi(weight: float, height: float) -> float:
 
 
 model = init_chat_model(model="gpt-4.1-mini", temperature=0.7)
-models_with_tools = model.bind_tools([calculate_bmi])
+agent = create_agent(
+    model=model,
+    tools=[calculate_bmi],
+    system_prompt="Você é um assistente que ajuda a calcular o IMC (Índice de Massa Corporal) com base no peso e altura fornecidos. Use a ferramenta de cálculo de IMC quando necessário.",
+)
 
 messages = [
     HumanMessage(content="Qual o IMC de alguém com 70Kg e 1.75m?"),
 ]
 
-response = models_with_tools.invoke(messages)
-messages.append(response)
+# response = agent.invoke({"messages": messages})
 
-for tool_call in response.tool_calls:
-    result = calculate_bmi.invoke(tool_call)
-    messages.append(result)
+# print(response["messages"][-1].content)
 
-final = models_with_tools.invoke(messages)
-print(final)
+# pprint(response)
+
+for chunk in agent.stream({"messages": messages}, stream_mode="values"):
+    latest_message = chunk["messages"][-1]
+    if latest_message.content:
+        if isinstance(latest_message, HumanMessage):
+            print(f"Human: {latest_message.content}")
+        elif isinstance(latest_message, AIMessage):
+            print(f"AI: {latest_message.content}")
+    elif latest_message.tool_calls:
+        print(f"Calling tools: {[tc['name'] for tc in latest_message.tool_calls]}")
